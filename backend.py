@@ -137,16 +137,19 @@ def delete_user(_id):
 @app.route('/api/v1.0/login', methods=['GET'])
 def login():
     auth = request.authorization
-    if auth and auth.password == 'password':
-        token = jwt.encode( {'username' : auth.username, \
-             'exp' : datetime.datetime.utcnow() + \
-                    datetime.timedelta(minutes=30)}, \
-            app.config['SECRET_KEY'])
-        return jsonify({'token' : token.decode('UTF-8')})
+    if auth:
+        user = users.find_one( { 'username':auth.username } )
+        if user is not None:
+            if bcrypt.checkpw(bytes(auth.password, 'UTF-8'), \
+                            user["password"]):
+                token = jwt.encode( {
+                    'user' : auth.username, 
+                    'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
+                }, app.config['SECRET_KEY'])
+                return make_response(jsonify({'token' : token.decode('UTF-8')}),200)
 
     return make_response('Could not verify', 401, \
-        {'WWW-Authenticate' : \
-            'Basic realm = "Login required" '})
+        {'WWW-Authenticate' : 'Basic realm = "Login required" '})
         
 
 # # logout
