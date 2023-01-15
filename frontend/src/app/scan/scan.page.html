@@ -1,0 +1,17 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>scan</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  <!-- <ion-card *ngIf="user"> -->
+  <ion-card *ngFor = "let user of users | async">  
+    <ion-card-content>
+      {{ user.email_address }} - {{ user.first_name }} {{ user.last_name }}
+    </ion-card-content>
+  </ion-card>
+
+  <ion-button expand="block" (click)="logout()">Logout</ion-button>
+
+</ion-content>

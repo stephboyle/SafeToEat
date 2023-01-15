@@ -14,7 +14,7 @@ from functools import wraps
  
 app = Flask(__name__)
 
-app.config['SECRET KEY'] = 'mysecret'
+app.config['SECRET_KEY'] = 'mysecret'
  
 client = MongoClient("mongodb://127.0.0.1:27017")
 
@@ -22,13 +22,25 @@ db = client.SafeToEat
 users = db.users
 blacklist = db.blacklist
 
+def jwt_required(func):
+    @wraps(func)
+    def jwt_required_wrapper(*args, **kwargs):
+        # token = request.args.get('token')
+        token = None
+        if 'x-access-token' in request.headers:
+            token = request.headers['x-access-token']
+        if not token:
+            return jsonify( {'message': 'Token is missing'}), 401
+        try:
+            data = jwt.decode(token, app.config['SECRET_KEY'])
+        except:
+            return jsonify( {'message' : 'Token is invalid'}), 401
+        return func(*args, **kwargs)
 
-# @app.route("/", methods=["GET"])
-# def index():
-#     return make_response("<h1>Hello World</h1>", 200)
+    return jwt_required_wrapper
 
 @app.route("/api/v1.0/users", methods=["GET"])
-#@jwt_required
+@jwt_required
 def show_all_users():
     page_num, page_size = 1, 10
     if request.args.get('pn'):
@@ -48,6 +60,7 @@ def show_all_users():
 
 # get user
 @app.route("/api/v1.0/users/<_id>", methods=["GET"])
+# @jwt_required
 def show_one_user(_id):
     user = users.find_one({'_id':ObjectId(_id)})
     if user is not None:
@@ -59,6 +72,7 @@ def show_one_user(_id):
 
 # creating account
 @app.route("/api/v1.0/users", methods=["POST"])
+# @jwt_required
 def add_user():
     if "first_name" in request.form and "last_name" in request.form and "email_address" in request.form and "password" in request.form and "allergy" in request.form:
         new_user = {"first_name": request.form["first_name"],
@@ -76,6 +90,7 @@ def add_user():
 
 # editing account details
 @app.route("/api/v1.0/users/<_id>", methods=["PUT"])
+@jwt_required
 def edit_user(_id):
     if "first_name" in request.form and "last_name" in request.form and "email_address" in request.form and "password" in request.form and "allergy" in request.form:
         result = users.update_one(
@@ -104,6 +119,7 @@ def edit_user(_id):
 
 # deleting account
 @app.route("/api/v1.0/users/<_id>", methods=["DELETE"])
+@jwt_required
 def delete_user(_id):
     result = users.delete_one( { "_id" : ObjectId(_id)})
     if result.deleted_count == 1:
@@ -116,49 +132,50 @@ def delete_user(_id):
     #         break
     # return make_response( jsonify( {} ), 200)
 
-# # auth user login
-# @app.route('/api/v1.0/login', methods=['GET'])
-# def login():
-#     auth = request.authorization
-#     if auth:
-#         hashed = bcrypt.hashpw(auth.password.encode('utf-8'), bcrypt.gensalt())
-
-#         user = users.find_one({'username': auth.username})
-#         if user is not None:
-#             if bcrypt.checkpw(user["password"].encode('utf-8'), hashed):
-#                 token = jwt.encode({'user': auth.username, 'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, app.config['SECRET_KEY'])
-#                 return make_response(jsonify({'token': token.decode('UTF-8')}), 200)
-#             else:
-#                 return make_response(jsonify({'message': 'Bad password'}), 401)
-#         else:
-#             return make_response(jsonify({'message': 'Bad username'}), 401)
-#     return make_response(jsonify({'message': 'Authentication required'}), 401)
-
+# auth user login
 @app.route('/api/v1.0/login', methods=['GET'])
 def login():
     auth = request.authorization
     if auth:
-        user = users.find_one( { 'username':auth.username } )
-        if user is not None:
-            if bcrypt.checkpw(bytes(auth.password, 'UTF-8'), \
-                            user["password"]):
-                token = jwt.encode( {
-                    'user' : auth.username, 
-                    'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
-                }, app.config['SECRET_KEY'])
-                return make_response(jsonify({'token' : token.decode('UTF-8')}),200)
+        hashed = bcrypt.hashpw(auth.password.encode('utf-8'), bcrypt.gensalt())
 
-    return make_response('Could not verify', 401, \
-        {'WWW-Authenticate' : 'Basic realm = "Login required" '})
+        user = users.find_one({'username': auth.username})
+        if user is not None:
+            if bcrypt.checkpw(user["password"].encode('utf-8'), hashed):
+                token = jwt.encode({'user': auth.username, 'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, app.config['SECRET_KEY'])
+                return make_response(jsonify({'token': token.decode('UTF-8')}), 200)
+            else:
+                return make_response(jsonify({'message': 'Bad password'}), 401)
+        else:
+            return make_response(jsonify({'message': 'Bad username'}), 401)
+    else:
+        return make_response(jsonify({'message': 'Authentication required'}), 401)
+
+# @app.route('/api/v1.0/login', methods=['GET'])
+# def login():
+#     auth = request.authorization
+#     if auth:
+#         user = users.find_one( { 'username':auth.username } )
+#         if user is not None:
+#             if bcrypt.checkpw(bytes(auth.password, 'UTF-8'), \
+#                             user["password"]):
+#                 token = jwt.encode( {
+#                     'user' : auth.username, 
+#                     'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
+#                 }, app.config['SECRET_KEY'])
+#                 return make_response(jsonify({'token' : token.decode('UTF-8')}),200)
+
+#     return make_response('Could not verify', 401, \
+#         {'WWW-Authenticate' : 'Basic realm = "Login required" '})
         
 
-# # logout
-# @app.route('/api/v1.0/logout', methods=["GET"])
-# # @jwt_required
-# def logout():
-#     token = request.headers['x-access-token']
-#     blacklist.insert_one({"token":token})
-#     return make_response(jsonify({'message' : 'Logout successful'}), 200)
+# logout
+@app.route('/api/v1.0/logout', methods=["GET"])
+# @jwt_required
+def logout():
+    token = request.headers['x-access-token']
+    blacklist.insert_one({"token":token})
+    return make_response(jsonify({'message' : 'Logout successful'}), 200)
 
 
 if __name__ == "__main__":
